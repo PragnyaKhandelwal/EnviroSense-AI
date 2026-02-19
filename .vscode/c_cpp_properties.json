@@ -1,0 +1,24 @@
+{
+  "version": 4,
+  "configurations": [
+    {
+      "name": "ESP32-PlatformIO",
+      "compilerPath": "C:/Users/prag1/.platformio/packages/toolchain-xtensa-esp32/bin/xtensa-esp32-elf-g++.exe",
+      "compileCommands": "${workspaceFolder}/esp32-nextPM-Monitor/compile_commands.json",
+      "includePath": [
+        "${workspaceFolder}/esp32-nextPM-Monitor/include",
+        "${workspaceFolder}/esp32-nextPM-Monitor/src",
+        "${workspaceFolder}/esp32-nextPM-Monitor/.pio/libdeps/esp32doit-devkit-v1/**",
+        "C:/Users/prag1/.platformio/packages/framework-arduinoespressif32/**"
+      ],
+      "defines": [
+        "PLATFORMIO=60119",
+        "ARDUINO_ARCH_ESP32",
+        "ESP32"
+      ],
+      "intelliSenseMode": "gcc-x64",
+      "cStandard": "c11",
+      "cppStandard": "gnu++11"
+    }
+  ]
+}
