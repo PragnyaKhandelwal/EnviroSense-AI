@@ -5,19 +5,19 @@ import paho.mqtt.client as mqtt
 import psycopg2
 
 DB_CONFIG = {
-    "dbname": "envirosense",
-    "user": "pragnya",
-    "password": "pragnya",
+    "dbname": "{db_name}",
+    "user": "{user_name}",
+    "password": "{password}",
     "host": "localhost",
-    "port": 5432,
+    "port": port_no,
 }
 
 MQTT_CONFIG = {
     "broker": "localhost",
-    "port": 1883,
+    "port": port_no,
     "user": "",
     "pass": "",
-    "topic": "esp32/sensor/data",
+    "topic": "{topic_name}",
 }
 
 
@@ -138,3 +138,4 @@ client.on_message = on_message
 print("Starting EnviroSense Subscriber...")
 client.connect(MQTT_CONFIG["broker"], MQTT_CONFIG["port"], 60)
 client.loop_forever()
+
