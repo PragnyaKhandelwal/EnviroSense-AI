@@ -17,7 +17,17 @@ const uint16_t MQTT_BUFFER_SIZE = 1024;
 const unsigned long SENSOR_POLL_INTERVAL_MS = 60000;
 const unsigned long MQTT_PUBLISH_INTERVAL_MS = 60000;
 
+#define REG_FIRMWARE_VERSION 0x01
 #define REG_STATUS 0x13
+#define REG_START_PM10_CLOGGING 109
+
+#define REG_START_PM1_10SEC_AVG_CNT 50
+#define REG_START_PM2_5_10SEC_AVG_CNT 52
+#define REG_START_PM10_10SEC_AVG_CNT 54
+
+#define REG_START_PM1_10SEC_AVG_MASS 56
+#define REG_START_PM2_5_10SEC_AVG_MASS 58
+#define REG_START_PM10_10SEC_AVG_MASS 60
 
 #define REG_START_PM1_60SEC_AVG_CNT 62
 #define REG_START_PM2_5_60SEC_AVG_CNT 64
@@ -27,14 +37,30 @@ const unsigned long MQTT_PUBLISH_INTERVAL_MS = 60000;
 #define REG_START_PM2_5_60SEC_AVG_MASS 70
 #define REG_START_PM10_60SEC_AVG_MASS 72
 
+#define REG_START_PM1_15MIN_AVG_CNT 74
+#define REG_START_PM2_5_15MIN_AVG_CNT 76
+#define REG_START_PM10_15MIN_AVG_CNT 78
+
+#define REG_START_PM1_15MIN_AVG_MASS 80
+#define REG_START_PM2_5_15MIN_AVG_MASS 82
+#define REG_START_PM10_15MIN_AVG_MASS 84
+
 #define REG_START_02_05_QTY_10SEC_AVG 128
 #define REG_START_05_10_QTY_10SEC_AVG 130
 #define REG_START_10_25_QTY_10SEC_AVG 132
 #define REG_START_25_50_QTY_10SEC_AVG 134
 #define REG_START_50_100_QTY_10SEC_AVG 136
 
+#define REG_FAN_RATIO 100
+#define REG_HEATER_RATIO 101
+#define REG_FAN_SPEED 102
+#define REG_LASER_STATUS 103
+
 #define REG_PM_HUMIDITY 106
 #define REG_PM_TEMPERATURE 107
+
+#define REG_EXT_CLC_TEMP 145
+#define REG_EXT_CLC_RELATIVE_HUMIDITY 146
 
 struct NextPmReading {
   uint16_t pm1_0_pcs;
@@ -56,6 +82,23 @@ NextPmReading latestReading = {0, 0, 0, 0, 0, 0, 0, 0, false};
 float latestTemperature = NAN;
 float latestHumidity = NAN;
 
+float latestExtClcTemp = NAN;
+float latestExtClcHumidity = NAN;
+
+float latestFanRatio = NAN;
+float latestHeaterRatio = NAN;
+float latestFanSpeed = NAN;
+float latestLaserStatus = NAN;
+
+float latestPm10CloggingMg = NAN;
+
+float pmCount10s_pm1_0 = NAN;
+float pmCount10s_pm2_5 = NAN;
+float pmCount10s_pm10 = NAN;
+float pmMass10s_pm1_0 = NAN;
+float pmMass10s_pm2_5 = NAN;
+float pmMass10s_pm10 = NAN;
+
 float pmCount60s_pm1_0 = NAN;
 float pmCount60s_pm2_5 = NAN;
 float pmCount60s_pm10 = NAN;
@@ -63,12 +106,20 @@ float pmMass60s_pm1_0 = NAN;
 float pmMass60s_pm2_5 = NAN;
 float pmMass60s_pm10 = NAN;
 
+float pmCount15m_pm1_0 = NAN;
+float pmCount15m_pm2_5 = NAN;
+float pmCount15m_pm10 = NAN;
+float pmMass15m_pm1_0 = NAN;
+float pmMass15m_pm2_5 = NAN;
+float pmMass15m_pm10 = NAN;
+
 float bin_0_3_0_5 = NAN;
 float bin_0_5_1_0 = NAN;
 float bin_1_0_2_5 = NAN;
 float bin_2_5_5_0 = NAN;
 float bin_5_0_10_0 = NAN;
 
+uint16_t latestFirmwareVersion = 0;
 uint16_t latestStatusCode = 0;
 
 bool trhValid = false;
@@ -119,10 +170,37 @@ bool readAveragedPMFloat(uint16_t reg, float& outValue) {
   return true;
 }
 
+bool readPM10Clogging(float& outValue) {
+  uint8_t result = nextPmModbus.readHoldingRegisters(REG_START_PM10_CLOGGING, 3);
+  if (result != nextPmModbus.ku8MBSuccess) {
+    return false;
+  }
+
+  uint32_t part1 = nextPmModbus.getResponseBuffer(0);
+  uint32_t part2 = nextPmModbus.getResponseBuffer(1);
+  uint32_t part3 = nextPmModbus.getResponseBuffer(2);
+  uint64_t raw = ((uint64_t)part1 << 32) | ((uint64_t)part2 << 16) | part3;
+
+  outValue = raw / 10.0f;
+  if (outValue > 12.0f) {
+    outValue = 12.0f;
+  }
+  return true;
+}
+
 bool pollSensorModbus() {
   bool ok = true;
 
+  ok = ok && readU16Register(REG_FIRMWARE_VERSION, latestFirmwareVersion);
   ok = ok && readU16Register(REG_STATUS, latestStatusCode);
+  ok = ok && readPM10Clogging(latestPm10CloggingMg);
+
+  ok = ok && readAveragedPMFloat(REG_START_PM1_10SEC_AVG_CNT, pmCount10s_pm1_0);
+  ok = ok && readAveragedPMFloat(REG_START_PM2_5_10SEC_AVG_CNT, pmCount10s_pm2_5);
+  ok = ok && readAveragedPMFloat(REG_START_PM10_10SEC_AVG_CNT, pmCount10s_pm10);
+  ok = ok && readAveragedPMFloat(REG_START_PM1_10SEC_AVG_MASS, pmMass10s_pm1_0);
+  ok = ok && readAveragedPMFloat(REG_START_PM2_5_10SEC_AVG_MASS, pmMass10s_pm2_5);
+  ok = ok && readAveragedPMFloat(REG_START_PM10_10SEC_AVG_MASS, pmMass10s_pm10);
 
   ok = ok && readAveragedPMFloat(REG_START_PM1_60SEC_AVG_CNT, pmCount60s_pm1_0);
   ok = ok && readAveragedPMFloat(REG_START_PM2_5_60SEC_AVG_CNT, pmCount60s_pm2_5);
@@ -130,6 +208,13 @@ bool pollSensorModbus() {
   ok = ok && readAveragedPMFloat(REG_START_PM1_60SEC_AVG_MASS, pmMass60s_pm1_0);
   ok = ok && readAveragedPMFloat(REG_START_PM2_5_60SEC_AVG_MASS, pmMass60s_pm2_5);
   ok = ok && readAveragedPMFloat(REG_START_PM10_60SEC_AVG_MASS, pmMass60s_pm10);
+
+  ok = ok && readAveragedPMFloat(REG_START_PM1_15MIN_AVG_CNT, pmCount15m_pm1_0);
+  ok = ok && readAveragedPMFloat(REG_START_PM2_5_15MIN_AVG_CNT, pmCount15m_pm2_5);
+  ok = ok && readAveragedPMFloat(REG_START_PM10_15MIN_AVG_CNT, pmCount15m_pm10);
+  ok = ok && readAveragedPMFloat(REG_START_PM1_15MIN_AVG_MASS, pmMass15m_pm1_0);
+  ok = ok && readAveragedPMFloat(REG_START_PM2_5_15MIN_AVG_MASS, pmMass15m_pm2_5);
+  ok = ok && readAveragedPMFloat(REG_START_PM10_15MIN_AVG_MASS, pmMass15m_pm10);
 
   ok = ok && readU16Div1000(REG_START_02_05_QTY_10SEC_AVG, bin_0_3_0_5);
   ok = ok && readU16Div1000(REG_START_05_10_QTY_10SEC_AVG, bin_0_5_1_0);
@@ -139,6 +224,12 @@ bool pollSensorModbus() {
 
   ok = ok && readU16Div100(REG_PM_HUMIDITY, latestHumidity);
   ok = ok && readU16Div100(REG_PM_TEMPERATURE, latestTemperature);
+  ok = ok && readU16Div100(REG_FAN_RATIO, latestFanRatio);
+  ok = ok && readU16Div100(REG_HEATER_RATIO, latestHeaterRatio);
+  ok = ok && readU16Div100(REG_FAN_SPEED, latestFanSpeed);
+  ok = ok && readU16Div100(REG_LASER_STATUS, latestLaserStatus);
+  ok = ok && readU16Div100(REG_EXT_CLC_TEMP, latestExtClcTemp);
+  ok = ok && readU16Div100(REG_EXT_CLC_RELATIVE_HUMIDITY, latestExtClcHumidity);
 
   if (!ok) {
     latestReading.valid = false;
@@ -163,19 +254,8 @@ bool pollSensorModbus() {
   return true;
 }
 
-void updateSensorReading() {
-  if (millis() - lastSensorPoll <= SENSOR_POLL_INTERVAL_MS) {
-    return;
-  }
-
-  lastSensorPoll = millis();
-
-  if (!pollSensorModbus()) {
-    Serial.println("NextPM Modbus read failed for one or more registers");
-    return;
-  }
-
-  Serial.print("NextPM Modbus updated | Status: 0x");
+void logPublishedSnapshot() {
+  Serial.print("[PUBLISHED] NextPM | Status: 0x");
   Serial.print(latestStatusCode, HEX);
   Serial.print(" | PM60s μg/m³ [1.0,2.5,10]: ");
   Serial.print(pmMass60s_pm1_0, 3);
@@ -194,12 +274,73 @@ void updateSensorReading() {
   Serial.print(bin_2_5_5_0, 3);
   Serial.print(", ");
   Serial.println(bin_5_0_10_0, 3);
+
+  Serial.print("  Temp/Humidity: ");
+  Serial.print(latestTemperature, 2);
+  Serial.print(" C, ");
+  Serial.print(latestHumidity, 2);
+  Serial.println(" %");
+}
+
+void logExtraDiagnostics() {
+  Serial.println("[EXTRA READS - NOT PUBLISHED] Diagnostics snapshot:");
+  Serial.print("  Firmware: ");
+  Serial.print(latestFirmwareVersion);
+  Serial.print(" | PM10 clogging mg: ");
+  Serial.println(latestPm10CloggingMg, 2);
+
+  Serial.print("  PM10s μg/m³ [1.0,2.5,10]: ");
+  Serial.print(pmMass10s_pm1_0, 3);
+  Serial.print(", ");
+  Serial.print(pmMass10s_pm2_5, 3);
+  Serial.print(", ");
+  Serial.println(pmMass10s_pm10, 3);
+
+  Serial.print("  PM15m μg/m³ [1.0,2.5,10]: ");
+  Serial.print(pmMass15m_pm1_0, 3);
+  Serial.print(", ");
+  Serial.print(pmMass15m_pm2_5, 3);
+  Serial.print(", ");
+  Serial.println(pmMass15m_pm10, 3);
+
+  Serial.print("  Fan/Heater/FanSpeed/Laser: ");
+  Serial.print(latestFanRatio, 2);
+  Serial.print(" / ");
+  Serial.print(latestHeaterRatio, 2);
+  Serial.print(" / ");
+  Serial.print(latestFanSpeed, 2);
+  Serial.print(" / ");
+  Serial.println(latestLaserStatus, 2);
+
+  Serial.print("  External Compensated Temp/Humidity: ");
+  Serial.print(latestExtClcTemp, 2);
+  Serial.print(" C, ");
+  Serial.print(latestExtClcHumidity, 2);
+  Serial.println(" %");
+}
+
+void updateSensorReading() {
+  if (millis() - lastSensorPoll <= SENSOR_POLL_INTERVAL_MS) {
+    return;
+  }
+
+  lastSensorPoll = millis();
+
+  if (!pollSensorModbus()) {
+    Serial.println("NextPM Modbus read failed for one or more registers");
+    return;
+  }
+
+  logPublishedSnapshot();
+  logExtraDiagnostics();
 }
 
 String buildMqttPayload() {
   String payload = "{";
   payload += "\"sensor\":\"nextpm\"";
 
+  // Publish order mirrors subscriber.py and PostgreSQL schema:
+  // counts -> mass concentration -> bins -> temperature -> humidity -> state -> valid
   payload += ",\"pm1_0_pcs\":";
   payload += latestReading.pm1_0_pcs;
   payload += ",\"pm2_5_pcs\":";
