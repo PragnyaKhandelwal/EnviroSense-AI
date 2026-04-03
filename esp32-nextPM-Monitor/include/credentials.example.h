@@ -17,5 +17,8 @@ const char* MQTT_PASSWORD = "";
 // VPS credentials
 const char* ROOT_PASSWORD = "";
 const char* VPS_USER = "";
+<<<<<<< HEAD
 const char* VPS_PASSWORD = "";
+=======
+>>>>>>> master
 #endif
