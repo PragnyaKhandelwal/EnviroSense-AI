@@ -5,6 +5,7 @@ import argparse
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 SHARED_UTILS_DIR = Path('/home/shared/envirosense')
@@ -36,6 +37,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--source-table', default='sensor_data', help='Source table name')
     parser.add_argument('--target-table', default='clean_data', help='Destination table name')
     parser.add_argument('--backfill-all', action='store_true', help='Ignore watermark and backfill any missing historical rows')
+    parser.add_argument(
+        '--impute-method',
+        choices=['kalman', 'median'],
+        default='kalman',
+        help='Imputation method for numeric gaps',
+    )
+    parser.add_argument('--kalman-process-noise', type=float, default=1e-2, help='Process noise for Kalman imputation')
+    parser.add_argument('--kalman-measurement-noise', type=float, default=1.0, help='Measurement noise for Kalman imputation')
     parser.add_argument('--dry-run', action='store_true', help='Do not write to the database')
     return parser.parse_args()
 
@@ -59,7 +68,67 @@ def coerce_boolean(series: pd.Series) -> pd.Series:
     return normalized.isin({'1', 'true', 't', 'yes', 'y'})
 
 
-def build_clean_frame(raw: pd.DataFrame) -> pd.DataFrame:
+def kalman_impute_series(
+    series: pd.Series,
+    process_noise: float,
+    measurement_noise: float,
+) -> pd.Series:
+    values = pd.to_numeric(series, errors='coerce').astype(float).to_numpy()
+    if np.isnan(values).all():
+        return pd.Series(np.zeros_like(values), index=series.index)
+
+    first_valid_idx = int(np.where(~np.isnan(values))[0][0])
+    x_est = float(values[first_valid_idx])
+    p_est = 1.0
+    output = np.empty_like(values)
+
+    for i, measurement in enumerate(values):
+        # Predict step
+        x_pred = x_est
+        p_pred = p_est + process_noise
+
+        if np.isnan(measurement):
+            # Missing measurement: use prediction only
+            x_est = x_pred
+            p_est = p_pred
+        else:
+            # Update step
+            kalman_gain = p_pred / (p_pred + measurement_noise)
+            x_est = x_pred + kalman_gain * (measurement - x_pred)
+            p_est = (1.0 - kalman_gain) * p_pred
+
+        output[i] = x_est
+
+    return pd.Series(output, index=series.index)
+
+
+def impute_numeric_columns(
+    frame: pd.DataFrame,
+    method: str,
+    process_noise: float,
+    measurement_noise: float,
+) -> pd.DataFrame:
+    for column in NUMERIC_COLUMNS:
+        if method == 'kalman':
+            frame[column] = (
+                frame.groupby('device_id', group_keys=False)[column]
+                .apply(lambda s: kalman_impute_series(s, process_noise, measurement_noise))
+            )
+            frame[column] = frame[column].fillna(frame[column].median(skipna=True))
+        else:
+            median_value = frame[column].median(skipna=True)
+            if pd.isna(median_value):
+                median_value = 0.0
+            frame[column] = frame[column].fillna(median_value)
+    return frame
+
+
+def build_clean_frame(
+    raw: pd.DataFrame,
+    impute_method: str,
+    process_noise: float,
+    measurement_noise: float,
+) -> pd.DataFrame:
     frame = raw.copy()
     frame['time'] = pd.to_datetime(frame['time'], utc=True, errors='coerce')
     frame = frame.dropna(subset=['time', 'device_id'])
@@ -81,11 +150,12 @@ def build_clean_frame(raw: pd.DataFrame) -> pd.DataFrame:
     before_missing = frame[NUMERIC_COLUMNS].isna().any(axis=1)
     state_missing = frame['state_code'].isna()
 
-    for column in NUMERIC_COLUMNS:
-        median_value = frame[column].median(skipna=True)
-        if pd.isna(median_value):
-            median_value = 0.0
-        frame[column] = frame[column].fillna(median_value)
+    frame = impute_numeric_columns(
+        frame,
+        method=impute_method,
+        process_noise=process_noise,
+        measurement_noise=measurement_noise,
+    )
 
     if frame['state_code'].isna().all():
         frame['state_code'] = 0
@@ -145,7 +215,12 @@ def main() -> int:
         print('No new rows to process.')
         return 0
 
-    clean = build_clean_frame(raw)
+    clean = build_clean_frame(
+        raw,
+        impute_method=args.impute_method,
+        process_noise=args.kalman_process_noise,
+        measurement_noise=args.kalman_measurement_noise,
+    )
     print(f'Prepared {len(clean)} rows from {len(raw)} source rows.')
     print(clean.head().to_string(index=False))
 
