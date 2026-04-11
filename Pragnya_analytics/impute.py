@@ -32,7 +32,7 @@ OUTPUT_COLUMNS = [
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description='Member 1 micro-batch imputation job')
+    parser = argparse.ArgumentParser(description='Pragnya analytics micro-batch imputation job')
     parser.add_argument('--minutes', type=int, default=60, help='Lookback window in minutes')
     parser.add_argument('--source-table', default='sensor_data', help='Source table name')
     parser.add_argument('--target-table', default='clean_data', help='Destination table name')
@@ -163,7 +163,7 @@ def build_clean_frame(
         state_mode = frame['state_code'].mode(dropna=True)
         frame['state_code'] = frame['state_code'].fillna(state_mode.iloc[0] if not state_mode.empty else 0)
 
-    frame['source_tag'] = 'member1'
+    frame['source_tag'] = 'pragnya_analytics'
     frame['imputed_flag'] = before_missing | state_missing
 
     clean = frame[OUTPUT_COLUMNS].copy()
