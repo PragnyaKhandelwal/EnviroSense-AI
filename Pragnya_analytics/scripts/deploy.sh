@@ -27,8 +27,8 @@ fi
 run_git "git checkout '$BRANCH'"
 run_git "git pull --ff-only '$REMOTE' '$BRANCH'"
 
-# Restart long-running subscriber and trigger one member1 batch for smoke check.
+# Restart long-running subscriber and trigger one Pragnya batch for smoke check.
 systemctl restart subscriber.service
-systemctl start member1-impute.service
+systemctl start pragnya-impute.service
 
 echo "Deployed $BRANCH: $LOCAL_SHA -> $REMOTE_SHA"
