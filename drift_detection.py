@@ -24,11 +24,11 @@ RATIO_COLUMNS = {
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description='Member 1 PM ratio drift detector')
+    parser = argparse.ArgumentParser(description='Pragnya PM ratio drift detector')
     parser.add_argument('--lookback-hours', type=int, default=24, help='Lookback window for baseline statistics')
     parser.add_argument('--z-threshold', type=float, default=3.0, help='Absolute z-score threshold for drift alert')
     parser.add_argument('--source-table', default='sensor_data', help='Source table name')
-    parser.add_argument('--target-table', default='member1_drift_metrics', help='Destination table name')
+    parser.add_argument('--target-table', default='pragnya_drift_metrics', help='Destination table name')
     parser.add_argument('--ensure-table', action='store_true', help='Attempt to create target table before writing')
     parser.add_argument('--dry-run', action='store_true', help='Print drift metrics without writing to DB')
     return parser.parse_args()
@@ -46,7 +46,7 @@ def ensure_table(target_table: str) -> None:
         baseline_std DOUBLE PRECISION NOT NULL,
         z_score DOUBLE PRECISION NOT NULL,
         drift_alert BOOLEAN NOT NULL,
-        source_tag TEXT NOT NULL DEFAULT 'member1',
+        source_tag TEXT NOT NULL DEFAULT 'pragnya',
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     """
@@ -119,7 +119,7 @@ def build_drift_rows(source_table: str, lookback_hours: int, z_threshold: float)
                     'baseline_std': std,
                     'z_score': float(z_score),
                     'drift_alert': bool(abs(z_score) >= z_threshold),
-                    'source_tag': 'member1',
+                    'source_tag': 'pragnya',
                 }
             )
 
