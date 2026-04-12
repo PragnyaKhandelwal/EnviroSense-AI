@@ -42,6 +42,10 @@ def run_pipeline():
     df = df.dropna(subset=["pm2_5_lag1", "pm2_5_roll_1h"])
     df = df.sort_values("time")
 
+    if df.empty:
+        print("⚠️ No rows after feature generation, skipping insert")
+        return
+
     # -------- TAKE LATEST --------
     result_df = df.tail(1)[[
         "time","device_id","pm2_5","temperature","humidity",
