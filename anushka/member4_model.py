@@ -15,8 +15,18 @@ import pandas as pd
 def run_pipeline():
     print("Running pipeline...")
 
+    recent_clean_data_query = """
+        SELECT *
+        FROM (
+            SELECT *
+            FROM clean_data
+            ORDER BY time DESC
+            LIMIT 3
+        ) AS recent_clean_data
+    """
+
     with db_utils.get_engine().connect() as conn:
-        df = pd.read_sql("SELECT * FROM clean_data", conn)
+        df = pd.read_sql(recent_clean_data_query, conn)
 
     df = df.sort_values("time")
 
