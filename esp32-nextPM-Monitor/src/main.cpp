@@ -14,8 +14,8 @@ const char* mqtt_topic = "esp32/sensor/data";
 const char* mqtt_client_id = "ESP32Client_";
 const uint16_t MQTT_BUFFER_SIZE = 1024;
 
-const unsigned long SENSOR_POLL_INTERVAL_MS = 300000;  // 5 minutes
-const unsigned long MQTT_PUBLISH_INTERVAL_MS = 300000; // 5 minutes
+const unsigned long SENSOR_POLL_INTERVAL_MS = 60000;  // 5 minutes
+const unsigned long MQTT_PUBLISH_INTERVAL_MS = 60000; // 5 minutes
 
 #define REG_FIRMWARE_VERSION 0x01
 #define REG_STATUS 0x13
