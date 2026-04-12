@@ -28,13 +28,19 @@ def run_pipeline():
     with db_utils.get_engine().connect() as conn:
         df = pd.read_sql(recent_clean_data_query, conn)
 
-    df = df.sort_values("time")
+    df = df.sort_values(["device_id", "time"])
 
     # -------- FEATURES --------
-    df['pm2_5_lag1'] = df['pm2_5'].shift(1)
-    df['pm2_5_roll_1h'] = df['pm2_5'].rolling(3).mean()
+    df['pm2_5_lag1'] = df.groupby("device_id")['pm2_5'].shift(1)
+    df['pm2_5_roll_1h'] = (
+        df.groupby("device_id")['pm2_5']
+        .rolling(3)
+        .mean()
+        .reset_index(level=0, drop=True)
+    )
 
     df = df.dropna(subset=["pm2_5_lag1", "pm2_5_roll_1h"])
+    df = df.sort_values("time")
 
     # -------- TAKE LATEST --------
     result_df = df.tail(1)[[
