@@ -10,6 +10,7 @@ print("🔥 MEMBER4 PIPELINE STARTED 🔥")
 
 import db_utils
 import pandas as pd
+from sqlalchemy import text
 
 
 def run_pipeline():
@@ -18,11 +19,11 @@ def run_pipeline():
     recent_clean_data_query = """
         SELECT *
         FROM (
-            SELECT *
+            SELECT *,
+                   ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn
             FROM clean_data
-            ORDER BY time DESC
-            LIMIT 3
-        ) AS recent_clean_data
+        ) ranked
+        WHERE rn <= 3
     """
 
     with db_utils.get_engine().connect() as conn:
@@ -56,24 +57,28 @@ def run_pipeline():
 
     print("Latest row time:", result_df["time"].iloc[0])
 
-    # -------- DUPLICATE CHECK --------
-    last_time = result_df["time"].iloc[0]
-
-    with db_utils.get_engine().connect() as conn:
-        check = pd.read_sql(
-            f"SELECT 1 FROM anushka WHERE time = '{last_time}' LIMIT 1",
-            conn
-        )
-
-    if not check.empty:
-        print("⚠️ Duplicate detected, skipping insert")
-        return
-
     # -------- INSERT --------
     print("Inserting row:")
     print(result_df)
 
     with db_utils.get_engine().begin() as conn:
-        result_df.to_sql("anushka", conn, if_exists="append", index=False)
+        row = result_df.iloc[0].to_dict()
+        stmt = text("""
+            INSERT INTO anushka (
+                time, device_id, pm2_5, temperature, humidity,
+                pm2_5_lag1, pm2_5_roll_1h, created_by
+            ) VALUES (
+                :time, :device_id, :pm2_5, :temperature, :humidity,
+                :pm2_5_lag1, :pm2_5_roll_1h, :created_by
+            )
+            ON CONFLICT (device_id, time) DO NOTHING
+        """)
+        result = conn.execute(stmt, row)
+
+    if result.rowcount == 0:
+        print("⚠️ Duplicate detected, skipping insert")
+        return
+
+    print("✅ Inserted successfully!")
 
     print("✅ Inserted successfully!")
