@@ -1,5 +1,12 @@
+
+import pandas as pd
 import pandas as pd
 import matplotlib.pyplot as plt
+import sys
+sys.path.append('/home/shared/envirosense')
+
+from db_utils import get_engine
+import pandas as pd
 from db_utils import get_engine
 
 engine = get_engine()
