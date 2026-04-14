@@ -1,10 +1,5 @@
 # 🌍 EnviroSense AI
 
-<<<<<<< HEAD
-**A Hybrid Deep Learning Ecosystem for Proactive Air Quality Forecasting & Anomaly Detection**
-
-EnviroSense AI is an end-to-end environmental intelligence platform. By bridging the gap between raw IoT sensor data and advanced Deep Learning, the system transforms air quality monitoring from a reactive "status check" into a proactive "early warning system."
-=======
 **A Hybrid Deep Learning PWA for Proactive Air Quality Forecasting & Anomaly Detection**
 
 EnviroSense AI is an end-to-end environmental intelligence ecosystem. By bridging the gap between raw IoT sensor data and advanced Deep Learning, the system transforms air quality monitoring from a reactive "status check" into a proactive "early warning system."
@@ -16,37 +11,23 @@ EnviroSense AI is an end-to-end environmental intelligence ecosystem. By bridgin
 * **Automated Fault Detection:** **Unsupervised Autoencoder** models that identify sensor drift and hardware anomalies in real-time.
 * **Installable PWA:** A mobile-native dashboard built with **React** and **Vite**, featuring offline caching and "Add to Home Screen" functionality.
 * **Proactive Alerting:** Integrated notification system (Telegram/Email) triggered by **AI-predicted** hazardous conditions.
->>>>>>> master
 
 ---
 
 ## 🏗️ System Architecture
 
-<<<<<<< HEAD
 The platform follows a modular 4-layer architecture designed for high availability and analytical depth:
 
 * **Edge Layer:** ESP32 nodes capturing high-fidelity particulate matter (PM1.0, PM2.5, PM10) and particle bin counts (0.3μm–10μm) via UART/Modbus protocols.
 * **Persistence Layer:** TimescaleDB (PostgreSQL) optimized for high-velocity time-series storage and hypertable partitioning.
 * **Inference Layer:** FastAPI serving pre-trained Deep Learning models (LSTM/Autoencoders) for real-time forecasting and anomaly detection.
 * **Presentation Layer:** React PWA utilizing WebSockets for instant data updates and cross-platform accessibility.
-=======
-The system follows a modular 4-layer architecture designed for high availability and analytical depth:
-
-1. **Edge Layer:** ESP32 nodes capturing particulate matter and weather data.
-2. **Persistence Layer:** **TimescaleDB** (PostgreSQL) optimized for high-velocity time-series storage.
-3. **Inference Layer:** **FastAPI** serving pre-trained Deep Learning models for real-time predictions.
-4. **Presentation Layer:** **React PWA** utilizing WebSockets for instant data updates without refresh.
->>>>>>> master
 
 ---
 
 ## 📊 Data Analytics & AI/ML Methodology
 
-<<<<<<< HEAD
 This project implements rigorous data science workflows to ensure accuracy and reliability:
-=======
-This project serves as a showcase for two distinct academic disciplines:
->>>>>>> master
 
 ### Data Analytics Focus
 
@@ -72,7 +53,6 @@ This project serves as a showcase for two distinct academic disciplines:
 
 ## 🛠️ Tech Stack
 
-<<<<<<< HEAD
 * **Hardware:** ESP32, Next-PM Optical Sensor, DHT22.
 * **Backend:** Python 3.10+, FastAPI, SQLAlchemy, Paho-MQTT.
 * **Frontend:** React.js, Vite, Tailwind CSS, Recharts.
@@ -116,13 +96,6 @@ When running analytical dashboards (e.g., Plotly Dash or Streamlit) on the VPS, 
 
 * **Remote Port:** `8050` (or your app's port)
 * **Local Address:** `localhost:8050`
-=======
-* **Hardware:** ESP32, NextPM Optical Sensor, DHT22.
-* **Backend:** Python, FastAPI, SQLAlchemy, Paho-MQTT.
-* **Frontend:** React.js, Vite, Tailwind CSS, Recharts.
-* **Database:** PostgreSQL with TimescaleDB extension.
-* **ML/DS Libraries:** TensorFlow/Keras, Scikit-learn, Pandas, Numpy.
->>>>>>> master
 
 ---
 
@@ -152,39 +125,9 @@ cd envirosense-ai
 ```
 
 
-<<<<<<< HEAD
 2. **Environment Setup:**
 Install dependencies from `requirements.txt` into your virtual environment.
 3. **Database Configuration:**
 Ensure the PostgreSQL `pg_hba.conf` allows connections for your specific database user.
 4. **Service Deployment:**
 Configure the `subscriber.py` as a `systemd` service for 24/7 data persistence.
-=======
-2. **Backend Setup**
-```bash
-cd backend
-pip install -r requirements.txt
-uvicorn main:app --reload
-
-```
-
-
-3. **Frontend Setup**
-```bash
-cd frontend
-npm install
-npm run dev
-
-```
-
-
-
----
-
-## 📈 Future Roadmap
-
-* [ ] Integration of OpenWeatherMap API for outdoor baseline comparison.
-* [ ] Support for multi-node sensor mesh networking.
-* [ ] Deployment of Edge-AI (TensorFlow Lite) directly on ESP32.
-
->>>>>>> master
