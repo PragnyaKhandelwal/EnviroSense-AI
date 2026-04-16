@@ -54,30 +54,72 @@ while True:
         time.sleep(10)
         continue
 
-    #SENSOR STATUS
+    # SENSOR STATUS
     current_time = pd.Timestamp.utcnow()
     last_time = pd.to_datetime(df['time'].max(), utc=True)
 
     diff = (current_time - last_time).total_seconds()
     status = "LIVE" if diff <= 300 else "OFFLINE"
 
-    print(" Sensor LIVE" if status == "LIVE" else " Sensor OFF")
+    print("Sensor LIVE" if status == "LIVE" else "Sensor OFF")
 
-    #TIME CONVERSION
+    # TIME CONVERSION
     df['time'] = pd.to_datetime(df['time'], utc=True).dt.tz_convert('Asia/Kolkata')
 
-    #  CLUSTERING
+    # =========================
+    # PARTICLE DISTRIBUTION
+    # =========================
+    df_bins = df[bins].div(df[bins].sum(axis=1), axis=0)
+
+    df_bins.columns = [
+        "0.3–0.5 µm",
+        "0.5–1.0 µm",
+        "1.0–2.5 µm",
+        "2.5–5.0 µm",
+        "5.0–10 µm"
+    ]
+
+    df_bins.plot.area(figsize=(10,6))
+    plt.title(f"Particle Distribution ({status})\nLast Update: {df['time'].max()}")
+    plt.xlabel("Index")
+    plt.ylabel("Proportion")
+    plt.grid()
+    plt.savefig("plots/live_distribution.png", dpi=150)
+    plt.close()
+
+    print("Updated distribution plot")
+
+    # =========================
+    # COUNT vs MASS
+    # =========================
+    plt.figure()
+
+    plt.scatter(df['pm2_5_pcs'], df['pm2_5'])
+    plt.title(f"Count vs Mass ({status})\nLast Update: {df['time'].max()}")
+    plt.xlabel("PM2.5 Count")
+    plt.ylabel("PM2.5 Mass")
+    plt.grid()
+
+    plt.savefig("plots/live_count_mass.png", dpi=150)
+    plt.close()
+
+    print("Updated count vs mass plot")
+
+    # =========================
+    # CLUSTERING
+    # =========================
     X = df[bins + ['pm2_5', 'pm10_0', 'temperature', 'humidity']].fillna(0)
     X_scaled = StandardScaler().fit_transform(X)
 
-    kmeans = KMeans(n_clusters=3, random_state=42)
+    kmeans = KMeans(n_clusters=3, random_state=42, n_init=10)
     df['cluster'] = kmeans.fit_predict(X_scaled)
 
-    #  LABELING (SMART + RELATIVE) 
+    # =========================
+    # LABELING
+    # =========================
     cluster_means = df.groupby('cluster')[['pm2_5', 'temperature', 'humidity']].mean()
-    
-    # Sort clusters by PM (important!)
     sorted_clusters = cluster_means.sort_values(by='pm2_5')
+
     labels_map = {}
 
     for i, c in enumerate(sorted_clusters.index):
@@ -85,17 +127,16 @@ while True:
         temp = sorted_clusters.loc[c, 'temperature']
         hum = sorted_clusters.loc[c, 'humidity']
 
-        
-        if i == 0:  # lowest pollution cluster
+        if i == 0:
             if temp > 35:
                 labels_map[c] = "Warm but Cleaner Air"
             elif hum > 70:
                 labels_map[c] = "Humid but Cleaner Air"
             else:
                 labels_map[c] = "Better Air"
-        elif i == 1:  # middle cluster
+        elif i == 1:
             labels_map[c] = "Moderate Pollution"
-        else:  # highest pollution cluster
+        else:
             if temp > 35:
                 labels_map[c] = "Hot & Polluted"
             else:
@@ -103,7 +144,9 @@ while True:
 
     df['label'] = df['cluster'].map(labels_map)
 
+    # =========================
     # SAVE
+    # =========================
     features_df = df[['time', 'device_id', 'cluster', 'label']].copy()
     features_df['time'] = features_df['time'].dt.tz_convert('UTC')
 
@@ -121,7 +164,9 @@ while True:
     else:
         print("No new data to save")
 
-    # PLOT
+    # =========================
+    # CLUSTER PLOT
+    # =========================
     plt.figure()
 
     for label in df['label'].unique():
@@ -138,8 +183,10 @@ while True:
     plt.ylabel("PM10")
     plt.legend()
     plt.grid()
-    plt.savefig("plots/live_clusters.png")
+    plt.savefig("plots/live_clusters.png", dpi=150)
     plt.close()
 
-    print("Updated plots!")
+    print("Updated all plots!\n")
+
     time.sleep(20)
+
