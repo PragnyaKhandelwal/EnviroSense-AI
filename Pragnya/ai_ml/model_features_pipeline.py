@@ -127,6 +127,33 @@ def load_source_frames(window_start: pd.Timestamp | None) -> dict[str, pd.DataFr
             {query_suffix}
             ORDER BY device_id, time
         """,
+        "quality": f"""
+            SELECT
+                window_end AS time,
+                device_id,
+                uptime_pct,
+                valid_pct,
+                expected_points,
+                actual_points,
+                valid_points
+            FROM pragnya_quality_metrics
+            {query_suffix.replace('time', 'window_end')}
+            ORDER BY device_id, window_end
+        """,
+        "drift": f"""
+            SELECT
+                measured_at AS time,
+                device_id,
+                ratio_name,
+                ratio_value,
+                baseline_mean,
+                baseline_std,
+                z_score,
+                drift_alert
+            FROM pragnya_drift_metrics
+            {query_suffix.replace('time', 'measured_at')}
+            ORDER BY device_id, measured_at
+        """,
     }
 
     frames: dict[str, pd.DataFrame] = {}
@@ -184,6 +211,64 @@ def build_feature_frame(frames: dict[str, pd.DataFrame], last_time: pd.Timestamp
         clean = clean.merge(rachna[["time", "device_id", "anomaly"]], on=["time", "device_id"], how="left")
     else:
         clean["anomaly"] = False
+
+    if not frames["quality"].empty:
+        quality = frames["quality"].copy()
+        quality["time"] = pd.to_datetime(quality["time"], utc=True)
+        quality = quality.sort_values(["device_id", "time"])
+        quality = quality.rename(
+            columns={
+                "uptime_pct": "pragnya_quality_uptime_pct",
+                "valid_pct": "pragnya_quality_valid_pct",
+                "expected_points": "pragnya_quality_expected_points",
+                "actual_points": "pragnya_quality_actual_points",
+                "valid_points": "pragnya_quality_valid_points",
+            }
+        )
+        clean = pd.merge_asof(
+            clean.sort_values(["device_id", "time"]),
+            quality,
+            by="device_id",
+            on="time",
+            direction="backward",
+            tolerance=pd.Timedelta("60min"),
+        )
+    else:
+        clean["pragnya_quality_uptime_pct"] = pd.NA
+        clean["pragnya_quality_valid_pct"] = pd.NA
+        clean["pragnya_quality_expected_points"] = pd.NA
+        clean["pragnya_quality_actual_points"] = pd.NA
+        clean["pragnya_quality_valid_points"] = pd.NA
+
+    if not frames["drift"].empty:
+        drift = frames["drift"].copy()
+        drift["time"] = pd.to_datetime(drift["time"], utc=True)
+        drift = drift.sort_values(["device_id", "time"])
+        drift = drift.rename(
+            columns={
+                "ratio_name": "pragnya_drift_ratio_name",
+                "ratio_value": "pragnya_drift_ratio_value",
+                "baseline_mean": "pragnya_drift_baseline_mean",
+                "baseline_std": "pragnya_drift_baseline_std",
+                "z_score": "pragnya_drift_z_score",
+                "drift_alert": "pragnya_drift_alert",
+            }
+        )
+        clean = pd.merge_asof(
+            clean.sort_values(["device_id", "time"]),
+            drift,
+            by="device_id",
+            on="time",
+            direction="backward",
+            tolerance=pd.Timedelta("60min"),
+        )
+    else:
+        clean["pragnya_drift_ratio_name"] = pd.NA
+        clean["pragnya_drift_ratio_value"] = pd.NA
+        clean["pragnya_drift_baseline_mean"] = pd.NA
+        clean["pragnya_drift_baseline_std"] = pd.NA
+        clean["pragnya_drift_z_score"] = pd.NA
+        clean["pragnya_drift_alert"] = pd.NA
 
     processed_groups = []
     for _, device_group in clean.groupby("device_id", sort=False):
@@ -251,6 +336,17 @@ def build_feature_frame(frames: dict[str, pd.DataFrame], last_time: pd.Timestamp
             "is_anomaly",
             "anomaly_score",
             "status_code",
+            "pragnya_quality_uptime_pct",
+            "pragnya_quality_valid_pct",
+            "pragnya_quality_expected_points",
+            "pragnya_quality_actual_points",
+            "pragnya_quality_valid_points",
+            "pragnya_drift_ratio_name",
+            "pragnya_drift_ratio_value",
+            "pragnya_drift_baseline_mean",
+            "pragnya_drift_baseline_std",
+            "pragnya_drift_z_score",
+            "pragnya_drift_alert",
             "created_by",
             "created_at",
             "prediction_confidence",
