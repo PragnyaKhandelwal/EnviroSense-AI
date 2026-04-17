@@ -1,0 +1,11 @@
+[Unit]
+Description=Run model_features sync every 1 minute
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+Unit=model-features.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target
