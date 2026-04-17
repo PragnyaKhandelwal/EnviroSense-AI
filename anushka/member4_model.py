@@ -1,5 +1,6 @@
 from pathlib import Path
 import sys
+import traceback
 
 # -------- SHARED PATH --------
 SHARED_UTILS_DIR = Path("/home/shared/envirosense")
@@ -13,72 +14,121 @@ import pandas as pd
 from sqlalchemy import text
 
 
+def get_last_processed_time():
+    """Get MAX(time) from anushka_features to use as watermark."""
+    try:
+        with db_utils.get_engine().connect() as conn:
+            result = conn.execute(text("SELECT MAX(time) FROM anushka_features"))
+            last_time = result.scalar()
+            if last_time is None:
+                return None
+            return last_time
+    except Exception as e:
+        print(f"❌ Error getting last processed time: {e}")
+        traceback.print_exc()
+        return None
+
+
+def fetch_new_rows():
+    """Fetch all rows from clean_data that are newer than the last processed time."""
+    last_time = get_last_processed_time()
+    
+    try:
+        with db_utils.get_engine().connect() as conn:
+            if last_time is None:
+                # First run: fetch recent rows from clean_data
+                query_obj = text("SELECT * FROM clean_data ORDER BY time ASC")
+                print("First run: fetching all clean_data rows")
+                df = pd.read_sql(query_obj, conn)
+            else:
+                # Incremental: only fetch NEW rows since watermark
+                query_obj = text("""
+                    SELECT * FROM clean_data 
+                    WHERE time > :last_time
+                    ORDER BY time ASC
+                """)
+                print(f"Incremental fetch: rows newer than {last_time}")
+                df = pd.read_sql(query_obj, conn, params={'last_time': last_time})
+            return df
+    except Exception as e:
+        print(f"❌ Error fetching rows: {e}")
+        traceback.print_exc()
+        return pd.DataFrame()
+
+
 def run_pipeline():
-    print("Running pipeline...")
+    print("\n▶️ Running Member4 feature pipeline...")
+    
+    try:
+        # Fetch new rows since last watermark
+        df = fetch_new_rows()
+        
+        if df.empty:
+            print("✅ No new rows to process")
+            return
+        
+        print(f"📊 Processing {len(df)} new rows")
+        
+        df = df.sort_values(["device_id", "time"])
 
-    recent_clean_data_query = """
-        SELECT *
-        FROM (
-            SELECT *,
-                   ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn
-            FROM clean_data
-        ) ranked
-        WHERE rn <= 3
-    """
+        # -------- FEATURES --------
+        df['pm2_5_lag1'] = df.groupby("device_id")['pm2_5'].shift(1)
+        df['pm2_5_roll_1h'] = (
+            df.groupby("device_id")['pm2_5']
+            .rolling(3)
+            .mean()
+            .reset_index(level=0, drop=True)
+        )
 
-    with db_utils.get_engine().connect() as conn:
-        df = pd.read_sql(recent_clean_data_query, conn)
+        df = df.dropna(subset=["pm2_5_lag1", "pm2_5_roll_1h"])
+        df = df.sort_values("time")
 
-    df = df.sort_values(["device_id", "time"])
+        if df.empty:
+            print("⚠️ No rows after feature generation, skipping insert")
+            return
 
-    # -------- FEATURES --------
-    df['pm2_5_lag1'] = df.groupby("device_id")['pm2_5'].shift(1)
-    df['pm2_5_roll_1h'] = (
-        df.groupby("device_id")['pm2_5']
-        .rolling(3)
-        .mean()
-        .reset_index(level=0, drop=True)
-    )
+        # -------- PREPARE ALL ROWS FOR INSERT (batch, not just tail(1)) --------
+        result_df = df[[
+            "time","device_id","pm2_5","temperature","humidity",
+            "pm2_5_lag1","pm2_5_roll_1h"
+        ]].copy()
 
-    df = df.dropna(subset=["pm2_5_lag1", "pm2_5_roll_1h"])
-    df = df.sort_values("time")
+        result_df["created_by"] = "member4"
 
-    if df.empty:
-        print("⚠️ No rows after feature generation, skipping insert")
-        return
+        print(f"✅ Generated {len(result_df)} feature rows")
+        print(f"   Time range: {result_df['time'].min()} → {result_df['time'].max()}")
 
-    # -------- TAKE LATEST --------
-    result_df = df.tail(1)[[
-        "time","device_id","pm2_5","temperature","humidity",
-        "pm2_5_lag1","pm2_5_roll_1h"
-    ]].copy()
+        # -------- BATCH INSERT --------
+        rows_inserted = 0
+        rows_skipped = 0
+        
+        with db_utils.get_engine().begin() as conn:
+            for _, row in result_df.iterrows():
+                row_dict = row.to_dict()
+                try:
+                    stmt = text("""
+                        INSERT INTO anushka_features (
+                            time, device_id, pm2_5, temperature, humidity,
+                            pm2_5_lag1, pm2_5_roll_1h, created_by
+                        ) VALUES (
+                            :time, :device_id, :pm2_5, :temperature, :humidity,
+                            :pm2_5_lag1, :pm2_5_roll_1h, :created_by
+                        )
+                        ON CONFLICT (device_id, time) DO NOTHING
+                    """)
+                    result = conn.execute(stmt, row_dict)
+                    if result.rowcount > 0:
+                        rows_inserted += 1
+                    else:
+                        rows_skipped += 1
+                except Exception as e:
+                    print(f"⚠️ Error inserting row {row['time']}: {e}")
+                    rows_skipped += 1
 
-    result_df["created_by"] = "member4"
+        print(f"✅ Inserted {rows_inserted} rows, skipped {rows_skipped} (duplicates)\n")
 
-    print("Latest row time:", result_df["time"].iloc[0])
-
-    # -------- INSERT --------
-    print("Inserting row:")
-    print(result_df)
-
-    with db_utils.get_engine().begin() as conn:
-        row = result_df.iloc[0].to_dict()
-        stmt = text("""
-            INSERT INTO anushka_features (
-                time, device_id, pm2_5, temperature, humidity,
-                pm2_5_lag1, pm2_5_roll_1h, created_by
-            ) VALUES (
-                :time, :device_id, :pm2_5, :temperature, :humidity,
-                :pm2_5_lag1, :pm2_5_roll_1h, :created_by
-            )
-            ON CONFLICT (device_id, time) DO NOTHING
-        """)
-        result = conn.execute(stmt, row)
-
-    if result.rowcount == 0:
-        print("⚠️ Duplicate detected, skipping insert")
-        return
-
-    print("✅ Inserted successfully!")
+    except Exception as e:
+        print(f"❌ PIPELINE ERROR: {e}")
+        traceback.print_exc()
 
    

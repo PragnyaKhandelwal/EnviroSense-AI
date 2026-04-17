@@ -1,50 +1,94 @@
-
-import pandas as pd
-import pandas as pd
-import matplotlib.pyplot as plt
 import sys
-sys.path.append('/home/shared/envirosense')
+import time
+from pathlib import Path
 
-from db_utils import get_engine
 import pandas as pd
+from sqlalchemy import text
+
+SHARED_UTILS_DIR = Path('/home/shared/envirosense')
+if str(SHARED_UTILS_DIR) not in sys.path:
+    sys.path.insert(0, str(SHARED_UTILS_DIR))
+
 from db_utils import get_engine
 
-engine = get_engine()
 
-query = "SELECT * FROM sensor_data ORDER BY time;"
-df = pd.read_sql(query, engine)
+SLEEP_SECONDS = 60
+ANOMALY_THRESHOLD = 200.0
 
-print("Data Preview:\n")
-print(df.head())
 
-df['time'] = pd.to_datetime(df['time'])
-df = df.sort_values('time')
+def get_last_processed_time():
+    with get_engine().connect() as conn:
+        result = conn.execute(text('SELECT MAX(time) FROM rachna_anomaly'))
+        return result.scalar()
 
-df['pm_diff'] = df['pm2_5'].diff()
-df['anomaly'] = df['pm_diff'].abs() > 200
 
-anomalies = df[df['anomaly'] == True]
+def fetch_new_rows(last_time):
+    query = text(
+        """
+        WITH ordered AS (
+            SELECT
+                time,
+                device_id,
+                pm2_5,
+                LAG(pm2_5) OVER (PARTITION BY device_id ORDER BY time) AS prev_pm2_5
+            FROM sensor_data
+        )
+        SELECT
+            time,
+            device_id,
+            pm2_5,
+            CASE
+                WHEN prev_pm2_5 IS NULL THEN FALSE
+                WHEN ABS(pm2_5 - prev_pm2_5) > :threshold THEN TRUE
+                ELSE FALSE
+            END AS anomaly
+        FROM ordered
+        WHERE (:last_time IS NULL OR time > :last_time)
+        ORDER BY time ASC
+        """
+    )
 
-print("\nRule-Based Anomalies:\n")
-print(anomalies)
+    with get_engine().connect() as conn:
+        return pd.read_sql_query(
+            query,
+            conn,
+            params={'threshold': ANOMALY_THRESHOLD, 'last_time': last_time},
+        )
 
-data_to_insert = anomalies[['time', 'pm2_5']].copy()
-data_to_insert['anomaly'] = True
 
-data_to_insert.to_sql('rachna_anomaly', engine, if_exists='append', index=False)
-plt.figure(figsize=(10,5))
+def upsert_rows(rows: pd.DataFrame) -> int:
+    if rows.empty:
+        return 0
 
-plt.plot(df['time'], df['pm2_5'], label='PM2.5')
+    payload = rows[['time', 'device_id', 'pm2_5', 'anomaly']].to_dict('records')
 
-plt.scatter(anomalies['time'], anomalies['pm2_5'],
-            color='red', label='Anomalies')
+    statement = text(
+        """
+        INSERT INTO rachna_anomaly (time, device_id, pm2_5, anomaly)
+        VALUES (:time, :device_id, :pm2_5, :anomaly)
+        ON CONFLICT (time, device_id)
+        DO UPDATE SET
+            pm2_5 = EXCLUDED.pm2_5,
+            anomaly = EXCLUDED.anomaly
+        """
+    )
 
-plt.xlabel('Time')
-plt.ylabel('PM2.5')
-plt.title('Anomaly Detection')
+    with get_engine().begin() as conn:
+        conn.execute(statement, payload)
 
-plt.legend()
-plt.xticks(rotation=45)
+    return len(payload)
 
-plt.tight_layout()
-plt.show()
+
+def main():
+    while True:
+        last_time = get_last_processed_time()
+        rows = fetch_new_rows(last_time)
+
+        inserted = upsert_rows(rows)
+        print(f'Processed {len(rows)} rows; upserted {inserted} rows.')
+
+        time.sleep(SLEEP_SECONDS)
+
+
+if __name__ == '__main__':
+    main()
