@@ -16,7 +16,7 @@ import db_utils  # type: ignore
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description='Pragnya quality panel metric generator')
+    parser = argparse.ArgumentParser(description='Pragnya analytics quality metric generator')
     parser.add_argument('--window-minutes', type=int, default=60, help='Window size used to compute quality metrics')
     parser.add_argument('--expected-interval-seconds', type=int, default=60, help='Expected sensor publish interval')
     parser.add_argument('--source-table', default='sensor_data', help='Source table name')
@@ -38,7 +38,7 @@ def ensure_table(target_table: str) -> None:
         valid_points INTEGER NOT NULL,
         uptime_pct NUMERIC(6,2) NOT NULL,
         valid_pct NUMERIC(6,2) NOT NULL,
-        source_tag TEXT NOT NULL DEFAULT 'pragnya',
+        source_tag TEXT NOT NULL DEFAULT 'pragnya_analytics',
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     """
@@ -74,7 +74,7 @@ def build_metrics(window_minutes: int, expected_interval_seconds: int, source_ta
     grouped['valid_pct'] = (grouped['valid_points'] / grouped['actual_points'] * 100.0).fillna(0.0).round(2)
     grouped['window_end'] = pd.Timestamp.now(tz='UTC')
     grouped['window_minutes'] = window_minutes
-    grouped['source_tag'] = 'pragnya'
+    grouped['source_tag'] = 'pragnya_analytics'
 
     return grouped[
         [
