@@ -1,0 +1,16 @@
+[Unit]
+Description=EnviroSense Stage 4 Model Features Sync
+After=network.target postgresql.service subscriber.service member3.service member4.service rachna.service pragnya-impute.service
+Requires=postgresql.service
+
+[Service]
+Type=oneshot
+User=pragnya
+WorkingDirectory=/home/pragnya/EnviroSenseAI
+EnvironmentFile=/home/shared/envirosense/db.env
+ExecStart=/home/pragnya/.venv/bin/python /home/pragnya/EnviroSenseAI/Pragnya/ai_ml/model_features_pipeline.py --lookback-hours 24
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
