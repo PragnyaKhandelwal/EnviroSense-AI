@@ -75,10 +75,9 @@ def run_pipeline():
         """)
         result = conn.execute(stmt, row)
 
+        
         if result.rowcount == 0:
-            print("⚠️ Duplicate detected, skipping insert")
-            return
-
+            print("⚠️ Duplicate in anushka_features, continuing metrics inserts...")
         metric_row = result_df.iloc[0]
 
         # -------- momentum_metrics --------
