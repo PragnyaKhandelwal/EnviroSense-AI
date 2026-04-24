@@ -29,6 +29,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lookback-hours", type=int, default=24, help="Historical window for rolling features")
     parser.add_argument("--chunk-size", type=int, default=1000, help="Rows per upsert batch")
     parser.add_argument("--backfill-all", action="store_true", help="Ignore watermark and rebuild from all clean_data")
+    parser.add_argument("--dry-run", action="store_true", help="Compute feature rows without writing to the database")
     return parser.parse_args()
 
 
@@ -218,13 +219,16 @@ def build_feature_frame(frames: dict[str, pd.DataFrame], last_time: pd.Timestamp
         quality = quality.sort_values(["device_id", "time"])
         quality = quality.rename(
             columns={
-                "uptime_pct": "pragnya_quality_uptime_pct",
-                "valid_pct": "pragnya_quality_valid_pct",
-                "expected_points": "pragnya_quality_expected_points",
-                "actual_points": "pragnya_quality_actual_points",
-                "valid_points": "pragnya_quality_valid_points",
+                "uptime_pct": "quality_uptime_pct",
+                "valid_pct": "quality_valid_pct",
+                "expected_points": "quality_expected_points",
+                "actual_points": "quality_actual_points",
+                "valid_points": "quality_valid_points",
             }
         )
+        quality["quality_completeness_pct"] = (
+            quality["quality_actual_points"] / quality["quality_expected_points"].replace(0, np.nan) * 100.0
+        ).clip(upper=100)
         clean = pd.merge_asof(
             clean.sort_values(["device_id", "time"]),
             quality,
@@ -234,11 +238,12 @@ def build_feature_frame(frames: dict[str, pd.DataFrame], last_time: pd.Timestamp
             tolerance=pd.Timedelta("60min"),
         )
     else:
-        clean["pragnya_quality_uptime_pct"] = pd.NA
-        clean["pragnya_quality_valid_pct"] = pd.NA
-        clean["pragnya_quality_expected_points"] = pd.NA
-        clean["pragnya_quality_actual_points"] = pd.NA
-        clean["pragnya_quality_valid_points"] = pd.NA
+        clean["quality_uptime_pct"] = pd.NA
+        clean["quality_valid_pct"] = pd.NA
+        clean["quality_completeness_pct"] = pd.NA
+        clean["quality_expected_points"] = pd.NA
+        clean["quality_actual_points"] = pd.NA
+        clean["quality_valid_points"] = pd.NA
 
     if not frames["drift"].empty:
         drift = frames["drift"].copy()
@@ -246,12 +251,12 @@ def build_feature_frame(frames: dict[str, pd.DataFrame], last_time: pd.Timestamp
         drift = drift.sort_values(["device_id", "time"])
         drift = drift.rename(
             columns={
-                "ratio_name": "pragnya_drift_ratio_name",
-                "ratio_value": "pragnya_drift_ratio_value",
-                "baseline_mean": "pragnya_drift_baseline_mean",
-                "baseline_std": "pragnya_drift_baseline_std",
-                "z_score": "pragnya_drift_z_score",
-                "drift_alert": "pragnya_drift_alert",
+                "ratio_name": "drift_ratio_name",
+                "ratio_value": "drift_ratio_value",
+                "baseline_mean": "drift_baseline_mean",
+                "baseline_std": "drift_baseline_std",
+                "z_score": "drift_z_score",
+                "drift_alert": "drift_alert",
             }
         )
         clean = pd.merge_asof(
@@ -263,12 +268,12 @@ def build_feature_frame(frames: dict[str, pd.DataFrame], last_time: pd.Timestamp
             tolerance=pd.Timedelta("60min"),
         )
     else:
-        clean["pragnya_drift_ratio_name"] = pd.NA
-        clean["pragnya_drift_ratio_value"] = pd.NA
-        clean["pragnya_drift_baseline_mean"] = pd.NA
-        clean["pragnya_drift_baseline_std"] = pd.NA
-        clean["pragnya_drift_z_score"] = pd.NA
-        clean["pragnya_drift_alert"] = pd.NA
+        clean["drift_ratio_name"] = pd.NA
+        clean["drift_ratio_value"] = pd.NA
+        clean["drift_baseline_mean"] = pd.NA
+        clean["drift_baseline_std"] = pd.NA
+        clean["drift_z_score"] = pd.NA
+        clean["drift_alert"] = pd.NA
 
     processed_groups = []
     for _, device_group in clean.groupby("device_id", sort=False):
@@ -317,6 +322,15 @@ def build_feature_frame(frames: dict[str, pd.DataFrame], last_time: pd.Timestamp
         / enriched["pm2_5_roll_1h"].fillna(1).abs().clip(lower=1)
     ).clip(upper=1.0).fillna(0.0)
 
+    quality_valid = pd.to_numeric(enriched["quality_valid_pct"], errors="coerce").fillna(0.0) / 100.0
+    quality_uptime = pd.to_numeric(enriched["quality_uptime_pct"], errors="coerce").fillna(0.0) / 100.0
+    quality_complete = pd.to_numeric(enriched["quality_completeness_pct"], errors="coerce").fillna(0.0) / 100.0
+    drift_penalty = pd.to_numeric(enriched["drift_z_score"], errors="coerce").abs().fillna(0.0)
+    drift_factor = (1.0 - (drift_penalty / 5.0)).clip(lower=0.0, upper=1.0)
+    enriched["reliability_score"] = (
+        0.35 * quality_valid + 0.30 * quality_uptime + 0.25 * quality_complete + 0.10 * drift_factor
+    ).round(4)
+
     enriched["created_by"] = "stage4_model_features"
     enriched["created_at"] = pd.Timestamp.now(tz="UTC")
 
@@ -336,17 +350,19 @@ def build_feature_frame(frames: dict[str, pd.DataFrame], last_time: pd.Timestamp
             "is_anomaly",
             "anomaly_score",
             "status_code",
-            "pragnya_quality_uptime_pct",
-            "pragnya_quality_valid_pct",
-            "pragnya_quality_expected_points",
-            "pragnya_quality_actual_points",
-            "pragnya_quality_valid_points",
-            "pragnya_drift_ratio_name",
-            "pragnya_drift_ratio_value",
-            "pragnya_drift_baseline_mean",
-            "pragnya_drift_baseline_std",
-            "pragnya_drift_z_score",
-            "pragnya_drift_alert",
+            "quality_uptime_pct",
+            "quality_valid_pct",
+            "quality_completeness_pct",
+            "quality_expected_points",
+            "quality_actual_points",
+            "quality_valid_points",
+            "drift_ratio_name",
+            "drift_ratio_value",
+            "drift_baseline_mean",
+            "drift_baseline_std",
+            "drift_z_score",
+            "drift_alert",
+            "reliability_score",
             "created_by",
             "created_at",
             "prediction_confidence",
@@ -366,6 +382,8 @@ def upsert_dataframe(frame: pd.DataFrame, chunk_size: int) -> int:
     engine = db_utils.get_engine()
     metadata = MetaData()
     model_table = Table("model_features", metadata, autoload_with=engine)
+    table_columns = {column.name for column in model_table.columns}
+    frame = frame[[column for column in frame.columns if column in table_columns]].copy()
     base_insert = pg_insert(model_table)
     update_columns = {
         column.name: base_insert.excluded[column.name]
@@ -405,6 +423,10 @@ def run_pipeline(args: argparse.Namespace) -> int:
     if feature_frame.empty:
         LOGGER.info("No new model_features rows to write")
         return 0
+
+    if args.dry_run:
+        LOGGER.info("Dry run mode enabled; computed %s rows and skipped DB write", len(feature_frame))
+        return len(feature_frame)
 
     processed = upsert_dataframe(feature_frame, args.chunk_size)
     LOGGER.info("Upserted %s model_features rows", processed)

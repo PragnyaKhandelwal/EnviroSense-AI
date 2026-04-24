@@ -36,6 +36,7 @@ def ensure_table(target_table: str) -> None:
         expected_points INTEGER NOT NULL,
         actual_points INTEGER NOT NULL,
         valid_points INTEGER NOT NULL,
+        completeness_pct NUMERIC(6,2) NOT NULL,
         uptime_pct NUMERIC(6,2) NOT NULL,
         valid_pct NUMERIC(6,2) NOT NULL,
         source_tag TEXT NOT NULL DEFAULT 'pragnya_analytics',
@@ -70,6 +71,7 @@ def build_metrics(window_minutes: int, expected_interval_seconds: int, source_ta
         .sort_values('device_id')
     )
     grouped['expected_points'] = expected_points
+    grouped['completeness_pct'] = (grouped['actual_points'] / expected_points * 100.0).clip(upper=100).round(2)
     grouped['uptime_pct'] = (grouped['actual_points'] / expected_points * 100.0).clip(upper=100).round(2)
     grouped['valid_pct'] = (grouped['valid_points'] / grouped['actual_points'] * 100.0).fillna(0.0).round(2)
     grouped['window_end'] = pd.Timestamp.now(tz='UTC')
@@ -84,6 +86,7 @@ def build_metrics(window_minutes: int, expected_interval_seconds: int, source_ta
             'expected_points',
             'actual_points',
             'valid_points',
+            'completeness_pct',
             'uptime_pct',
             'valid_pct',
             'source_tag',
