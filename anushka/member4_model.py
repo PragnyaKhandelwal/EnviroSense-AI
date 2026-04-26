@@ -32,9 +32,9 @@ def run_pipeline():
     df = df.sort_values(["device_id", "time"])
 
     # -------- FEATURES --------
-    df['pm2_5_lag1'] = df.groupby("device_id")['pm2_5'].shift(1)
-    df['pm2_5_roll_1h'] = (
-        df.groupby("device_id")['pm2_5']
+    df["pm2_5_lag1"] = df.groupby("device_id")["pm2_5"].shift(1)
+    df["pm2_5_roll_1h"] = (
+        df.groupby("device_id")["pm2_5"]
         .rolling(3)
         .mean()
         .reset_index(level=0, drop=True)
@@ -49,20 +49,20 @@ def run_pipeline():
 
     # -------- TAKE LATEST --------
     result_df = df.tail(1)[[
-        "time","device_id","pm2_5","temperature","humidity",
-        "pm2_5_lag1","pm2_5_roll_1h"
+        "time", "device_id", "pm2_5", "temperature", "humidity",
+        "pm2_5_lag1", "pm2_5_roll_1h"
     ]].copy()
 
     result_df["created_by"] = "member4"
 
     print("Latest row time:", result_df["time"].iloc[0])
-
-    # -------- INSERT --------
     print("Inserting row:")
     print(result_df)
 
     with db_utils.get_engine().begin() as conn:
         row = result_df.iloc[0].to_dict()
+
+        # -------- MAIN TABLE INSERT --------
         stmt = text("""
             INSERT INTO anushka_features (
                 time, device_id, pm2_5, temperature, humidity,
@@ -75,10 +75,61 @@ def run_pipeline():
         """)
         result = conn.execute(stmt, row)
 
-    if result.rowcount == 0:
-        print("⚠️ Duplicate detected, skipping insert")
-        return
+        
+        if result.rowcount == 0:
+            print("⚠️ Duplicate in anushka_features, continuing metrics inserts...")
+        metric_row = result_df.iloc[0]
 
-    print("✅ Inserted successfully!")
+        # -------- momentum_metrics --------
+        conn.execute(text("""
+            INSERT INTO momentum_metrics (
+                device_id, time, momentum_index, trend_strength,
+                spike_flag, sustained_flag
+            ) VALUES (
+                :device_id, :time, :momentum_index, :trend_strength,
+                :spike_flag, :sustained_flag
+            )
+            ON CONFLICT DO NOTHING
+        """), {
+            "device_id": metric_row["device_id"],
+            "time": metric_row["time"],
+            "momentum_index": float(metric_row["pm2_5"] - metric_row["pm2_5_lag1"]),
+            "trend_strength": float(metric_row["pm2_5_roll_1h"]),
+            "spike_flag": bool(metric_row["pm2_5"] > metric_row["pm2_5_roll_1h"]),
+            "sustained_flag": bool(metric_row["pm2_5_roll_1h"] > 0)
+        })
 
-   
+        # -------- recovery_metrics --------
+        conn.execute(text("""
+            INSERT INTO recovery_metrics (
+                device_id, time, recovery_slope, half_life,
+                peak_time, return_to_baseline_time
+            ) VALUES (
+                :device_id, :time, :recovery_slope, :half_life,
+                :peak_time, :return_to_baseline_time
+            )
+            ON CONFLICT DO NOTHING
+        """), {
+            "device_id": metric_row["device_id"],
+            "time": metric_row["time"],
+            "recovery_slope": -1.0,
+            "half_life": 1.0,
+            "peak_time": metric_row["time"],
+            "return_to_baseline_time": metric_row["time"]
+        })
+
+        # -------- lag_diagnostics --------
+        conn.execute(text("""
+            INSERT INTO lag_diagnostics (
+                device_id, time, lag_k, correlation, memory_length
+            ) VALUES (
+                :device_id, :time, :lag_k, :correlation, :memory_length
+            )
+            ON CONFLICT DO NOTHING
+        """), {
+            "device_id": metric_row["device_id"],
+            "time": metric_row["time"],
+            "lag_k": 1,
+            "correlation": 0.5,
+            "memory_length": 1
+        })
