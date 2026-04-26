@@ -1,15 +1,67 @@
 import sys
 import os
 import time
-import matplotlib.pyplot as plt
-from sklearn.cluster import KMeans 
-from sklearn.preprocessing import StandardScaler
+import traceback
+import logging
+from pathlib import Path
+from sqlalchemy import text
+from dotenv import load_dotenv
+
 import pandas as pd
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+load_dotenv()
 
-from db.db_util import get_recent_data
+# Setup logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
+# SHARED UTILS
+SHARED_UTILS_DIR = Path('/home/shared/envirosense')
+if str(SHARED_UTILS_DIR) not in sys.path:
+    sys.path.insert(0, str(SHARED_UTILS_DIR))
+
+import db_utils
+
+# HELPER
+def get_last_saved_time():
+    """Get MAX(time) from pratishtha_features to use as watermark."""
+    try:
+        with db_utils.get_engine().connect() as conn:
+            result = conn.execute(text("SELECT MAX(time) FROM pratishtha_features"))
+            last_time = result.scalar()
+            if last_time is None:
+                return None
+            return last_time
+    except Exception as e:
+        logger.error(f"Error getting last saved time: {e}")
+        return None
+
+
+def fetch_new_rows():
+    """Fetch all rows from sensor_data newer than last watermark."""
+    last_time = get_last_saved_time()
+    
+    try:
+        with db_utils.get_engine().connect() as conn:
+            if last_time is None:
+                # First run: fetch recent rows from sensor_data
+                query_obj = text("SELECT * FROM sensor_data ORDER BY time DESC LIMIT 1000")
+                df = pd.read_sql(query_obj, conn)
+            else:
+                # Incremental: only fetch NEW rows since watermark
+                query_obj = text("""
+                    SELECT * FROM sensor_data 
+                    WHERE time > :last_time
+                    ORDER BY time ASC
+                """)
+                df = pd.read_sql(query_obj, conn, params={'last_time': last_time})
+            return df
+    except Exception as e:
+        logger.error(f"Error fetching rows: {e}")
+        return pd.DataFrame()
+
+
+# SETUP
 os.makedirs("plots", exist_ok=True)
 
 bins = [
@@ -20,118 +72,148 @@ bins = [
     'bin_5_0_10_0'
 ]
 
+# MAIN LOOP
+logger.info("🚀 Member3 Feature Pipeline Started (60s cadence, watermark-based incremental sync)")
+
 while True:
+    try:
+        logger.info("Fetching new data...")
+        df = fetch_new_rows()
+        
+        if df.empty:
+            logger.info("✅ No new data to process")
+            time.sleep(60)
+            continue
 
-    print("\nFetching latest data...")
+        logger.info(f"📊 Processing {len(df)} new rows")
 
-    df = get_recent_data(200)
+        # SENSOR STATUS
+        current_time = pd.Timestamp.utcnow()
+        last_time = pd.to_datetime(df['time'].max(), utc=True)
+        diff = (current_time - last_time).total_seconds()
+        status = "LIVE" if diff <= 300 else "OFFLINE"
+        logger.info(f"Sensor {status} (lag: {diff:.1f}s)")
 
-    if df.empty:
-        print("No data yet...")
-        time.sleep(10)
-        continue
+        # Skip time conversion complexity - keep as UTC
+        df['time'] = pd.to_datetime(df['time'], utc=True)
 
-    # SENSOR STATUS CHECK
-  
-    current_time = pd.Timestamp.utcnow()
-    last_time = pd.to_datetime(df['time'].max(), utc=True)
-    diff = (current_time - last_time).total_seconds()
+        # CLUSTERING (with error handling)
+        try:
+            from sklearn.cluster import KMeans
+            from sklearn.preprocessing import StandardScaler
+            
+            logger.info("Running clustering...")
+            X = df[bins + ['pm2_5', 'pm10_0', 'temperature', 'humidity']].fillna(0)
+            X_scaled = StandardScaler().fit_transform(X)
 
-    if diff > 300:
-        status = "OFFLINE"
-        print("⚠️ Sensor OFF or delayed")
-    else:
-        status = "LIVE"
-        print("✅ Sensor LIVE")
+            kmeans = KMeans(n_clusters=3, random_state=42, n_init=10)
+            df['cluster'] = kmeans.fit_predict(X_scaled)
 
-    #CONVERT UTC → IST
-   
-    df['time'] = pd.to_datetime(df['time'], utc=True).dt.tz_convert('Asia/Kolkata')
+            # LABELING
+            cluster_means = df.groupby('cluster')[['pm2_5', 'temperature', 'humidity']].mean()
+            sorted_clusters = cluster_means.sort_values(by='pm2_5')
 
-    # SIZE DISTRIBUTION
-   
-    df_bins = df[bins].div(df[bins].sum(axis=1), axis=0)
+            labels_map = {}
+            for i, c in enumerate(sorted_clusters.index):
+                pm = sorted_clusters.loc[c, 'pm2_5']
+                temp = sorted_clusters.loc[c, 'temperature']
+                hum = sorted_clusters.loc[c, 'humidity']
 
-    df_bins.columns = [
-        "0.3–0.5 µm",
-        "0.5–1.0 µm",
-        "1.0–2.5 µm",
-        "2.5–5.0 µm",
-        "5.0–10 µm"
-    ]
+                if i == 0:
+                    if temp > 35:
+                        labels_map[c] = "Warm but Cleaner Air"
+                    elif hum > 70:
+                        labels_map[c] = "Humid but Cleaner Air"
+                    else:
+                        labels_map[c] = "Better Air"
+                elif i == 1:
+                    labels_map[c] = "Moderate Pollution"
+                else:
+                    if temp > 35:
+                        labels_map[c] = "Hot & Polluted"
+                    else:
+                        labels_map[c] = "Unhealthy Air"
 
-    df_bins.plot.area(figsize=(10,6))
+            df['label'] = df['cluster'].map(labels_map)
+            logger.info("✅ Clustering complete")
 
-    plt.xlabel("Time Index")
-    plt.ylabel("Particle Proportion (%)")
-    plt.title(f"Particle Distribution ({status})\nLast Update (IST): {df['time'].max()}")
+        except Exception as e:
+            logger.error(f"❌ Clustering error: {e}")
+            traceback.print_exc()
+            # If clustering fails, use a default label
+            df['cluster'] = 0
+            df['label'] = "Unknown"
 
-    plt.legend(title="Particle Size")
-    plt.grid()
+        # SAVE (with deduplication)
+        try:
+            features_df = df[['time', 'device_id', 'cluster', 'label']].copy()
+            features_df = features_df.drop_duplicates(subset=['time', 'device_id'])
 
-    plt.savefig("plots/live_distribution.png")
-    plt.close()
+            if not features_df.empty:
+                inserted = db_utils.save_dataframe(features_df, "pratishtha_features")
+                logger.info(f"✅ Inserted {inserted} rows to pratishtha_features")
+            else:
+                logger.info("⚠️ No data after deduplication")
 
-    # COUNT vs MASS
-    plt.scatter(df['pm2_5_pcs'], df['pm2_5'], color='blue')
+        except Exception as e:
+            logger.error(f"❌ Error saving features: {e}")
+            traceback.print_exc()
 
-    plt.xlabel("Particle Count (PM2.5)")
-    plt.ylabel("Particle Mass (µg/m³)")
-    plt.title(f"Count vs Mass ({status})\nLast Update (IST): {df['time'].max()}")
+        # PLOTTING (optional, with error handling)
+        try:
+            import matplotlib
+            matplotlib.use('Agg')  # Use non-interactive backend
+            import matplotlib.pyplot as plt
+            
+            logger.info("Generating plots...")
 
-    plt.grid()
+            # Particle distribution
+            if not df.empty and all(col in df.columns for col in bins):
+                df_bins = df[bins].div(df[bins].sum(axis=1), axis=0)
+                df_bins.columns = ["0.3–0.5 µm", "0.5–1.0 µm", "1.0–2.5 µm", "2.5–5.0 µm", "5.0–10 µm"]
+                df_bins.plot.area(figsize=(10, 6))
+                plt.title(f"Particle Distribution ({status})\nLast Update: {df['time'].max()}")
+                plt.xlabel("Index")
+                plt.ylabel("Proportion")
+                plt.grid()
+                plt.savefig("plots/live_distribution.png", dpi=150)
+                plt.close()
 
-    plt.savefig("plots/live_count_mass.png")
-    plt.close()
+            # Count vs mass
+            if 'pm2_5_pcs' in df.columns and 'pm2_5' in df.columns:
+                plt.figure()
+                plt.scatter(df['pm2_5_pcs'], df['pm2_5'])
+                plt.title(f"Count vs Mass ({status})\nLast Update: {df['time'].max()}")
+                plt.xlabel("PM2.5 Count")
+                plt.ylabel("PM2.5 Mass")
+                plt.grid()
+                plt.savefig("plots/live_count_mass.png", dpi=150)
+                plt.close()
 
-    #  CLUSTERING
-    X = df[bins]
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-    kmeans = KMeans(n_clusters=3, random_state=42)
-    df['cluster'] = kmeans.fit_predict(X_scaled)
-    # Label clusters
-    cluster_means = df.groupby('cluster')[['pm2_5', 'pm10_0']].mean()
-    print("\nCluster Means:")
-    print(cluster_means)
-    ratios = cluster_means['pm2_5'] / cluster_means['pm10_0']
-    labels_map = {}
+            # Cluster plot
+            plt.figure()
+            for label in df['label'].unique():
+                subset = df[df['label'] == label]
+                if 'pm2_5' in subset.columns and 'pm10_0' in subset.columns:
+                    plt.scatter(subset['pm2_5'], subset['pm10_0'], label=label, alpha=0.7)
+            plt.title(f"Air Quality ({status})\nLast Update: {df['time'].max()}")
+            plt.xlabel("PM2.5")
+            plt.ylabel("PM10")
+            plt.legend()
+            plt.grid()
+            plt.savefig("plots/live_clusters.png", dpi=150)
+            plt.close()
 
-# sort clusters by ratio
-    sorted_clusters = ratios.sort_values()
+            logger.info("✅ Plots updated")
 
-    labels_map[sorted_clusters.index[0]] = "Dust"
-    labels_map[sorted_clusters.index[1]] = "Traffic"
-    labels_map[sorted_clusters.index[2]] = "Smoke"
+        except Exception as e:
+            logger.warning(f"⚠️ Plot generation skipped: {e}")
 
-    df['label'] = df['cluster'].map(labels_map)
+        logger.info("✅ Cycle complete\n")
 
-    # Plot clusters
-    colors = {
-        "Smoke": "red",
-        "Dust": "brown",
-        "Traffic": "blue"
-    }
+    except Exception as e:
+        logger.error(f"❌ PIPELINE ERROR: {e}")
+        traceback.print_exc()
 
-    for label in df['label'].unique():
-        subset = df[df['label'] == label]
+    time.sleep(60)
 
-        plt.scatter(subset['pm2_5'], subset['pm10_0'],
-                    label=label,
-                    color=colors[label])
-
-    plt.xlabel("PM2.5 (µg/m³)")
-    plt.ylabel("PM10 (µg/m³)")
-    plt.title(f"Pollution Types ({status})\nLast Update (IST): {df['time'].max()}")
-
-    plt.legend()
-    plt.grid()
-
-    plt.savefig("plots/live_clusters.png")
-    plt.close()
-
-    # DEBUG
-    print("Updated plots!")
-    print("Last data time (IST):", df['time'].max())
-
-    time.sleep(20)
