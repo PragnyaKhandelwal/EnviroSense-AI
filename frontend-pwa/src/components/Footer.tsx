@@ -7,13 +7,11 @@ export function Footer() {
         
         <div>
           <div className="font-medium text-foreground">
-            Case study · Personal pollutant exposure
+          System Overview
           </div>
 
           <p className="mt-1 max-w-2xl text-xs leading-relaxed">
-            EnviroSense AI is a hyper-local ecological node combining domestic sensor data
-            (~70k 1-min samples from "My Terrace-on-Room") with regional context. All metrics
-            shown here are illustrative of the engineering pipeline and modeling approach.
+          EnviroSense AI acts as an autonomous ecological sentinel, providing high-fidelity environmental monitoring through a dedicated localized node. By leveraging a high-frequency sampling architecture, the platform translates raw environmental variables into actionable regional insights. This interface demonstrates an end-to-end engineering pipeline designed for real-time climate modeling and atmospheric data integrity.
           </p>
         </div>
 

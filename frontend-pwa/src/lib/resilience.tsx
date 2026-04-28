@@ -10,6 +10,8 @@ import {
 import {
   DEFAULT_DEVICE_ID,
   DEVICES,
+  LIVE_API_ENABLED,
+  fetchPipelineFromApi,
   runPipeline,
   type DeviceMeta,
   type PipelineSnapshot,
@@ -46,14 +48,18 @@ function simulateFetch(
   tick: number,
   forceFail: boolean,
 ): Promise<SensorSnapshot> {
+  if (forceFail) {
+    return Promise.reject(new Error("Simulated server outage (FastAPI unreachable)"));
+  }
+
+  if (LIVE_API_ENABLED) {
+    return fetchPipelineFromApi(deviceId, tick, FETCH_TIMEOUT_MS);
+  }
+
   return new Promise((resolve, reject) => {
     const latency = 180 + Math.random() * 220;
     const timer = setTimeout(() => {
-      if (forceFail) {
-        reject(new Error("Simulated server outage (FastAPI unreachable)"));
-      } else {
-        resolve(runPipeline(deviceId, tick));
-      }
+      resolve(runPipeline(deviceId, tick));
     }, latency);
     setTimeout(() => {
       clearTimeout(timer);

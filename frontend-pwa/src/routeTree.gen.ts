@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SystemHealthRouteImport } from './routes/system-health'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as RegisterRouteImport } from './routes/register'
 import { Route as PredictiveRouteImport } from './routes/predictive'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AlertsRouteImport } from './routes/alerts'
@@ -24,6 +25,11 @@ const SystemHealthRoute = SystemHealthRouteImport.update({
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RegisterRoute = RegisterRouteImport.update({
+  id: '/register',
+  path: '/register',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PredictiveRoute = PredictiveRouteImport.update({
@@ -52,6 +58,7 @@ export interface FileRoutesByFullPath {
   '/alerts': typeof AlertsRoute
   '/login': typeof LoginRoute
   '/predictive': typeof PredictiveRoute
+  '/register': typeof RegisterRoute
   '/settings': typeof SettingsRoute
   '/system-health': typeof SystemHealthRoute
 }
@@ -60,6 +67,7 @@ export interface FileRoutesByTo {
   '/alerts': typeof AlertsRoute
   '/login': typeof LoginRoute
   '/predictive': typeof PredictiveRoute
+  '/register': typeof RegisterRoute
   '/settings': typeof SettingsRoute
   '/system-health': typeof SystemHealthRoute
 }
@@ -69,6 +77,7 @@ export interface FileRoutesById {
   '/alerts': typeof AlertsRoute
   '/login': typeof LoginRoute
   '/predictive': typeof PredictiveRoute
+  '/register': typeof RegisterRoute
   '/settings': typeof SettingsRoute
   '/system-health': typeof SystemHealthRoute
 }
@@ -79,6 +88,7 @@ export interface FileRouteTypes {
     | '/alerts'
     | '/login'
     | '/predictive'
+    | '/register'
     | '/settings'
     | '/system-health'
   fileRoutesByTo: FileRoutesByTo
@@ -87,6 +97,7 @@ export interface FileRouteTypes {
     | '/alerts'
     | '/login'
     | '/predictive'
+    | '/register'
     | '/settings'
     | '/system-health'
   id:
@@ -95,6 +106,7 @@ export interface FileRouteTypes {
     | '/alerts'
     | '/login'
     | '/predictive'
+    | '/register'
     | '/settings'
     | '/system-health'
   fileRoutesById: FileRoutesById
@@ -104,6 +116,7 @@ export interface RootRouteChildren {
   AlertsRoute: typeof AlertsRoute
   LoginRoute: typeof LoginRoute
   PredictiveRoute: typeof PredictiveRoute
+  RegisterRoute: typeof RegisterRoute
   SettingsRoute: typeof SettingsRoute
   SystemHealthRoute: typeof SystemHealthRoute
 }
@@ -122,6 +135,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/register': {
+      id: '/register'
+      path: '/register'
+      fullPath: '/register'
+      preLoaderRoute: typeof RegisterRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/predictive': {
@@ -160,6 +180,7 @@ const rootRouteChildren: RootRouteChildren = {
   AlertsRoute: AlertsRoute,
   LoginRoute: LoginRoute,
   PredictiveRoute: PredictiveRoute,
+  RegisterRoute: RegisterRoute,
   SettingsRoute: SettingsRoute,
   SystemHealthRoute: SystemHealthRoute,
 }

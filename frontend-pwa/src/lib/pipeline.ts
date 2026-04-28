@@ -30,6 +30,12 @@ import {
   type Regime,
 } from "@/lib/mock-data";
 
+const LIVE_API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ?? "";
+
+export const LIVE_API_ENABLED =
+  ((import.meta.env.VITE_ENABLE_LIVE_API as string | undefined)?.toLowerCase() === "true") ||
+  LIVE_API_BASE.length > 0;
+
 // -----------------------------------------------------------------------------
 // Devices — supports multiple sensors without UI changes.
 // -----------------------------------------------------------------------------
@@ -271,6 +277,56 @@ export interface PipelineSnapshot {
   forecast: typeof forecastData;
   detailedForecast: typeof detailedForecast;
   timeline24h: typeof timeline24h;
+}
+
+function ensureSnapshotShape(payload: unknown): payload is PipelineSnapshot {
+  const data = payload as Partial<PipelineSnapshot> | null;
+  return Boolean(
+    data &&
+      data.sensor &&
+      typeof data.sensor.ts === "number" &&
+      Array.isArray(data.sensor.sparkline) &&
+      data.regime &&
+      data.transitions &&
+      data.stability,
+  );
+}
+
+/**
+ * Fetches a live pipeline snapshot from the VPS API.
+ * The API response shape mirrors `PipelineSnapshot` exactly.
+ */
+export async function fetchPipelineFromApi(
+  deviceId: string,
+  tick: number,
+  timeoutMs = 4_000,
+): Promise<PipelineSnapshot> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const base = LIVE_API_BASE.replace(/\/$/, "");
+  const endpoint = `${base}/api/pipeline?device=${encodeURIComponent(deviceId)}&tick=${tick}`;
+
+  try {
+    const response = await fetch(endpoint, {
+      method: "GET",
+      signal: controller.signal,
+      headers: {
+        Accept: "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Pipeline API failed (${response.status})`);
+    }
+
+    const payload: unknown = await response.json();
+    if (!ensureSnapshotShape(payload)) {
+      throw new Error("Pipeline API returned an invalid payload shape");
+    }
+    return payload;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
