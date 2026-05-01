@@ -81251,3 +81251,11 @@ ValueError: n_samples=1 should be >= n_clusters=3.
 2026-05-01 15:52:46,082 - INFO - Assigned label: Better Air
 2026-05-01 15:52:46,087 - INFO - Inserted 1 rows
 2026-05-01 15:52:46,370 - INFO - Plots updated
+2026-05-01 15:53:46,376 - INFO - Processing 1 rows
+2026-05-01 15:53:46,389 - INFO - Assigned label: Better Air
+2026-05-01 15:53:46,394 - INFO - Inserted 1 rows
+2026-05-01 15:53:46,895 - INFO - Plots updated
+2026-05-01 15:54:46,901 - INFO - Processing 1 rows
+2026-05-01 15:54:46,916 - INFO - Assigned label: Better Air
+2026-05-01 15:54:46,921 - INFO - Inserted 1 rows
+2026-05-01 15:54:47,247 - INFO - Plots updated
