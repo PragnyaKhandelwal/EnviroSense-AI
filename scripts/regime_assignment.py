@@ -7,19 +7,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# =========================
 # SHARED UTILS
-# =========================
 SHARED_UTILS_DIR = Path('/home/shared/envirosense')
 sys.path.insert(0, str(SHARED_UTILS_DIR))
-
 import db_utils
 
 print("Running Regime Assignment...")
 
-# =========================
-# LOAD FEATURE TABLE
-# =========================
+# LOAD FEATURES
 query = """
 SELECT *
 FROM pratishtha_features
@@ -33,9 +28,7 @@ if df.empty:
     print("No data found")
     exit()
 
-# =========================
 # LOAD SENSOR DATA
-# =========================
 query2 = """
 SELECT time, pm2_5, pm10_0, temperature, humidity
 FROM sensor_data
@@ -44,23 +37,15 @@ FROM sensor_data
 with db_utils.get_engine().connect() as conn:
     df2 = pd.read_sql(query2, conn)
 
-# =========================
-# FIX TIME + ALIGN
-# =========================
+# TIME ALIGN
 df['time'] = pd.to_datetime(df['time'], utc=True).dt.floor('min')
 df2['time'] = pd.to_datetime(df2['time'], utc=True).dt.floor('min')
 
-# =========================
 # MERGE
-# =========================
 df = df.merge(df2, on='time', how='left')
-
-# remove duplicates after merge
 df = df.drop_duplicates(subset=['time', 'device_id'])
 
-# =========================
 # FEATURE ENGINEERING
-# =========================
 df['pm_ratio'] = df['pm2_5'] / (df['pm10_0'] + 1)
 df['temp_humidity'] = df['temperature'] * df['humidity']
 df['pm_diff'] = df['pm10_0'] - df['pm2_5']
@@ -76,48 +61,37 @@ features = [
 ]
 
 X = df[features].fillna(0)
-X_scaled = StandardScaler().fit_transform(X)
 
-# =========================
-# CLUSTERING
-# =========================
+# SCALE
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+
+# CLUSTER
 kmeans = KMeans(n_clusters=3, random_state=42, n_init=20)
 df['regime_id'] = kmeans.fit_predict(X_scaled)
 
-# debug
 print("\nCluster distribution:")
 print(df['regime_id'].value_counts())
 
-# =========================
-# REGIME LABELING
-# =========================
-cluster_stats = df.groupby('regime_id')[['pm2_5', 'temperature', 'humidity']].mean()
+# ✅ FIXED LABELING (RELATIVE BASED)
+cluster_stats = df.groupby('regime_id')[['pm2_5']].mean()
 
-print("\nCluster stats:")
+print("\nCluster PM2.5 stats:")
 print(cluster_stats)
 
+sorted_clusters = cluster_stats.sort_values('pm2_5')
+
 labels_map = {}
-
-for r in cluster_stats.index:
-    pm = cluster_stats.loc[r, 'pm2_5']
-
-    if pm < 15:
-        labels_map[r] = "Stable Clean"
-    elif pm < 35:
-        labels_map[r] = "Moderate Fluctuation"
-    else:
-        labels_map[r] = "Unstable / Polluted"
+labels_map[sorted_clusters.index[0]] = "Stable Clean"
+labels_map[sorted_clusters.index[1]] = "Moderate Fluctuation"
+labels_map[sorted_clusters.index[2]] = "Unstable / Polluted"
 
 df['regime_label'] = df['regime_id'].map(labels_map)
 
-# =========================
-# PREPARE OUTPUT
-# =========================
+# OUTPUT
 out = df[['time', 'device_id', 'regime_id', 'regime_label']].copy()
 
-# =========================
-# REMOVE DUPLICATES (DB LEVEL SAFE)
-# =========================
+# REMOVE EXISTING DUPLICATES
 with db_utils.get_engine().connect() as conn:
     existing = pd.read_sql("SELECT time, device_id FROM regime_profiles", conn)
 
@@ -127,9 +101,7 @@ if not existing.empty:
     out = out.merge(existing, on=['time', 'device_id'], how='left', indicator=True)
     out = out[out['_merge'] == 'left_only'].drop(columns=['_merge'])
 
-# =========================
 # SAVE
-# =========================
 if not out.empty:
     inserted = db_utils.save_dataframe(out, "regime_profiles")
     print(f"\nInserted {inserted} rows")
