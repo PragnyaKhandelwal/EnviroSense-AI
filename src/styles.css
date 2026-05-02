@@ -1,0 +1,208 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-clean: var(--clean);
+  --color-moderate: var(--moderate);
+  --color-poor: var(--poor);
+  --color-cyan: var(--cyan);
+  --color-violet: var(--violet);
+  --color-panel: var(--panel);
+  --color-panel-foreground: var(--panel-foreground);
+  --color-grid: var(--grid);
+}
+
+:root {
+  --radius: 0.75rem;
+
+  /* Dark scientific command-center palette */
+  --background: oklch(0.16 0.02 240);
+  --foreground: oklch(0.96 0.01 230);
+
+  --panel: oklch(0.20 0.025 245);
+  --panel-foreground: oklch(0.96 0.01 230);
+
+  --card: oklch(0.21 0.025 245);
+  --card-foreground: oklch(0.96 0.01 230);
+
+  --popover: oklch(0.20 0.025 245);
+  --popover-foreground: oklch(0.96 0.01 230);
+
+  --primary: oklch(0.78 0.18 155);
+  --primary-foreground: oklch(0.16 0.02 240);
+
+  --secondary: oklch(0.28 0.03 245);
+  --secondary-foreground: oklch(0.96 0.01 230);
+
+  --muted: oklch(0.26 0.02 245);
+  --muted-foreground: oklch(0.70 0.02 240);
+
+  --accent: oklch(0.30 0.04 200);
+  --accent-foreground: oklch(0.96 0.01 230);
+
+  --destructive: oklch(0.65 0.24 25);
+  --destructive-foreground: oklch(0.98 0.01 0);
+
+  --border: oklch(0.30 0.02 240);
+  --input: oklch(0.28 0.02 240);
+  --ring: oklch(0.78 0.18 155);
+
+  --grid: oklch(0.30 0.02 240 / 0.5);
+
+  /* Ecological metaphors */
+  --clean: oklch(0.78 0.18 150);     /* glowing green */
+  --moderate: oklch(0.85 0.16 90);   /* warm yellow */
+  --poor: oklch(0.68 0.24 25);       /* striking red */
+  --cyan: oklch(0.80 0.14 200);
+  --violet: oklch(0.72 0.18 290);
+
+  --shadow-glow-clean: 0 0 24px oklch(0.78 0.18 150 / 0.35);
+  --shadow-glow-moderate: 0 0 24px oklch(0.85 0.16 90 / 0.35);
+  --shadow-glow-poor: 0 0 24px oklch(0.68 0.24 25 / 0.4);
+  --shadow-card: 0 1px 0 oklch(1 0 0 / 0.03) inset, 0 12px 30px -16px oklch(0 0 0 / 0.6);
+}
+
+.dark {
+  /* same — app is always dark */
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  html, body, #root {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    min-height: 100%;
+  }
+  body {
+    background-image:
+      radial-gradient(1200px 600px at 80% -10%, oklch(0.30 0.08 200 / 0.25), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, oklch(0.30 0.10 150 / 0.22), transparent 60%),
+      linear-gradient(180deg, oklch(0.15 0.02 240), oklch(0.13 0.02 240));
+    background-attachment: fixed;
+  }
+}
+
+@layer utilities {
+  .panel {
+    background: linear-gradient(180deg, oklch(0.22 0.025 245 / 0.8), oklch(0.18 0.025 245 / 0.7));
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
+    backdrop-filter: blur(8px);
+  }
+  .panel-glow-clean { box-shadow: var(--shadow-card), var(--shadow-glow-clean); border-color: oklch(0.78 0.18 150 / 0.4); }
+  .panel-glow-moderate { box-shadow: var(--shadow-card), var(--shadow-glow-moderate); border-color: oklch(0.85 0.16 90 / 0.4); }
+  .panel-glow-poor { box-shadow: var(--shadow-card), var(--shadow-glow-poor); border-color: oklch(0.68 0.24 25 / 0.5); }
+
+  .text-clean { color: var(--color-clean); }
+  .text-moderate { color: var(--color-moderate); }
+  .text-poor { color: var(--color-poor); }
+  .bg-clean { background-color: var(--color-clean); }
+  .bg-moderate { background-color: var(--color-moderate); }
+  .bg-poor { background-color: var(--color-poor); }
+
+  .glow-text-clean { text-shadow: 0 0 18px oklch(0.78 0.18 150 / 0.55); }
+  .glow-text-moderate { text-shadow: 0 0 18px oklch(0.85 0.16 90 / 0.55); }
+  .glow-text-poor { text-shadow: 0 0 18px oklch(0.68 0.24 25 / 0.6); }
+
+  .grid-bg {
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+
+  .live-dot {
+    width: 8px; height: 8px; border-radius: 9999px;
+    background: var(--color-clean);
+    box-shadow: 0 0 0 0 oklch(0.78 0.18 150 / 0.7);
+    animation: pulse-ring 1.6s cubic-bezier(0.4,0,0.6,1) infinite;
+  }
+  @keyframes pulse-ring {
+    0% { box-shadow: 0 0 0 0 oklch(0.78 0.18 150 / 0.7); }
+    70% { box-shadow: 0 0 0 10px oklch(0.78 0.18 150 / 0); }
+    100% { box-shadow: 0 0 0 0 oklch(0.78 0.18 150 / 0); }
+  }
+
+  .scanline::before {
+    content: "";
+    position: absolute; inset: 0;
+    background: repeating-linear-gradient(0deg, transparent 0 3px, oklch(1 0 0 / 0.015) 3px 4px);
+    pointer-events: none;
+    border-radius: inherit;
+  }
+
+  /* Delta-sync sweep — a thin highlight that races across the live pill */
+  .delta-sweep {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+  }
+  .delta-sweep::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      100deg,
+      transparent 30%,
+      oklch(0.78 0.18 150 / 0.35) 50%,
+      transparent 70%
+    );
+    transform: translateX(-100%);
+    pointer-events: none;
+  }
+  .delta-sweep[data-sweep="on"]::after {
+    animation: delta-sweep-x 900ms ease-out;
+  }
+  @keyframes delta-sweep-x {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+
+  /* Pulsing ring for the live dot — a slightly stronger variant for the delta-sync chip */
+  .delta-ring {
+    position: relative;
+  }
+  .delta-ring::before {
+    content: "";
+    position: absolute;
+    inset: -4px;
+    border-radius: 9999px;
+    border: 1px solid oklch(0.78 0.18 150 / 0.5);
+    animation: delta-ring-pulse 2s ease-out infinite;
+    pointer-events: none;
+  }
+  @keyframes delta-ring-pulse {
+    0%   { transform: scale(0.6); opacity: 0.9; }
+    80%  { transform: scale(1.3); opacity: 0;   }
+    100% { transform: scale(1.3); opacity: 0;   }
+  }
+}
