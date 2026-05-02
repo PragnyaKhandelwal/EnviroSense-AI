@@ -1,3 +1,15 @@
+<<<<<<< HEAD
+fastapi==0.95.2
+uvicorn==0.23.2
+SQLAlchemy==2.0.46
+psycopg2-binary==2.9.11
+python-dotenv==1.2.1
+
+# Runtime helpers (lightweight)
+requests==2.32.5
+
+# NOTE: heavy ML dependencies moved to requirements-ml.txt
+=======
 # Backend & Pipeline
 fastapi==0.129.0
 uvicorn==0.41.0
@@ -19,3 +31,4 @@ requests==2.32.5
 pydantic==2.12.5
 rich==14.3.2
 dotenv
+>>>>>>> upstream/Pratishtha

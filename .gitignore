@@ -12,4 +12,5 @@ __pycache__/
 # OS files
 .DS_Store
 .env
-node_modules/
+backend/.env
+.env

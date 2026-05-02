@@ -1,0 +1,25 @@
+{
+  "name": "EnviroSense AI",
+  "short_name": "EnviroSense",
+  "description": "Edge-to-Cloud environmental intelligence — hyper-local air quality, predictive forecasts, anomaly detection.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0b1220",
+  "theme_color": "#0b1220",
+  "icons": [
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
